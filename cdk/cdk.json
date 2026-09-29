@@ -1,0 +1,19 @@
+{
+  "app": "dotnet run --project Account.Cdk.csproj",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "bin",
+      "obj",
+      "**/*.csproj"
+    ]
+  },
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/aws-ecs:disableEcsImdsBlocking": true,
+    "@aws-cdk/core:target-partitions": ["aws"]
+  }
+}

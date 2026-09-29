@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore Account.slnx
+
+      - name: Build
+        run: dotnet build Account.slnx --configuration Release --no-restore
+
+      # Testcontainers uses the Docker engine available on ubuntu-latest runners.
+      - name: Test with coverage
+        run: >
+          dotnet test Account.slnx
+          --configuration Release
+          --no-build
+          --collect:"XPlat Code Coverage"
+          --settings coverage.runsettings
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ./TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./TestResults
+
+      - name: Enforce coverage threshold (>= 75% line)
+        shell: bash
+        run: |
+          report=$(find ./TestResults -name 'coverage.cobertura.xml' | head -1)
+          if [ -z "$report" ]; then
+            echo "No coverage report found"; exit 1
+          fi
+          rate=$(grep -o 'line-rate="[0-9.]*"' "$report" | head -1 | grep -o '[0-9.]*')
+          pct=$(awk "BEGIN { printf \"%.1f\", $rate * 100 }")
+          echo "Line coverage: ${pct}%"
+          meets=$(awk "BEGIN { print ($rate >= 0.75) ? 1 : 0 }")
+          if [ "$meets" -ne 1 ]; then
+            echo "Coverage ${pct}% is below the 75% threshold"; exit 1
+          fi

@@ -1,0 +1,20 @@
+@Account_HostAddress = http://localhost:5027
+
+### List accounts
+GET {{Account_HostAddress}}/v1/accounts
+Accept: application/json
+
+### Create an account
+POST {{Account_HostAddress}}/v1/accounts
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "displayName": "Jane Doe"
+}
+
+### Health check
+GET {{Account_HostAddress}}/health
+Accept: application/json
+
+###

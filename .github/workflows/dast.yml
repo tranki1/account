@@ -1,0 +1,62 @@
+name: DAST
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1" # Weekly; DAST is slower, keep it off the PR path.
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP Baseline
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: accounts
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish app
+        run: dotnet publish Account.csproj -c Release -o ./publish
+
+      - name: Run app in background
+        env:
+          ConnectionStrings__AccountsDb: "Host=localhost;Port=5432;Database=accounts;Username=postgres;Password=postgres"
+          ASPNETCORE_URLS: "http://localhost:8080"
+        run: |
+          nohup dotnet ./publish/Account.dll > app.log 2>&1 &
+          echo "Waiting for app to be ready..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health >/dev/null; then
+              echo "App is up"; break
+            fi
+            sleep 2
+          done
+          cat app.log
+
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "http://localhost:8080"
+          fail_action: false
+          cmd_options: "-a"

@@ -1,8 +1,27 @@
+using Account.Api;
+using Account.Data;
+using Account.Observability;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+// OpenAPI (see https://aka.ms/aspnet/openapi)
 builder.Services.AddOpenApi();
+
+// OpenTelemetry: traces, metrics, logs (OTLP + console in dev).
+builder.Services.AddAccountTelemetry(builder.Configuration, builder.Environment);
+
+// EF Core with PostgreSQL. Connection string resolved from configuration,
+// which is sourced from AWS Secrets Manager / SSM in deployed environments.
+var connectionString = builder.Configuration.GetConnectionString("AccountsDb")
+    ?? "Host=localhost;Port=5432;Database=accounts;Username=postgres;Password=postgres";
+
+builder.Services.AddDbContext<AccountsDbContext>(options =>
+    options.UseNpgsql(connectionString));
+
+// Health checks: liveness at /health/live, readiness (incl. DB) at /health.
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AccountsDbContext>(name: "database");
 
 var app = builder.Build();
 
@@ -12,28 +31,16 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+app.MapAccountEndpoints();
 
-app.MapGet("/weatherforecast", () =>
+// Readiness (verifies the database is reachable) and a lightweight liveness probe.
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    Predicate = _ => false
+});
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+// Exposed for integration testing via WebApplicationFactory.
+public partial class Program;

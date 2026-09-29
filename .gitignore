@@ -48,3 +48,7 @@ secrets.json
 
 # Rider
 *.sln.iml
+
+# AWS CDK
+cdk.out/
+cdk.context.json
